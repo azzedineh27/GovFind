@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Scraper Leboncoin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <h1>Scraper Leboncoin</h1>
+
+  <form id="frm">
+    <div>
+      <label>URL Leboncoin :
+        <input id="url" type="url" required
+               placeholder="https://www.leboncoin.fr/recherche?text=..." style="width:600px;">
+      </label>
+    </div>
+    <div>
+      <label>Modèle (regex) :
+        <input id="model" placeholder="ex: (?:^|\\s)(clio\\s*4|clio\\s*iv)(?:\\s|$)" style="width:600px;">
+      </label>
+    </div>
+    <div>
+      <label>Max annonces :
+        <input id="max" type="number" min="1" step="1" placeholder="ex: 80">
+      </label>
+      <label>Pages max :
+        <input id="pages" type="number" min="1" step="1" value="10">
+      </label>
+      <label>Hydrater :
+        <input id="hydrate" type="checkbox" checked>
+      </label>
+      <label>Sleep (s) :
+        <input id="sleep" type="number" min="0" step="0.2" value="0.8">
+      </label>
+    </div>
+    <button type="submit">Lancer</button>
+  </form>
+
+  <p id="status"></p>
+  <h2>Résultats</h2>
+  <div id="out"></div>
+
+  <script>
+    const API_BASE = "http://127.0.0.1:5001";
+
+    function esc(s){ return (s ?? "").toString(); }
+
+    function card(ad){
+      const t = esc(ad.title);
+      const price = esc(ad.price_text) || (ad.price != null ? ad.price + " EUR" : "—");
+      const loc = esc(ad.location) || "—";
+      const ym = [ad.year ? "Année: "+ad.year : null, ad.mileage_km ? "Km: "+ad.mileage_km : null].filter(Boolean).join(" | ") || "—";
+      const bm = [esc(ad.brand), esc(ad.model)].filter(Boolean).join(" • ") || "—";
+      const img = esc(ad.image);
+      const url = esc(ad.url);
+      return `
+        <article style="border:1px solid #ccc;padding:10px;margin:10px;display:flex;gap:12px;max-width:900px;">
+          <a href="${url}" target="_blank" rel="noopener">
+            <img src="${img}" alt="${t}" style="width:160px;height:120px;object-fit:cover;background:#eee;">
+          </a>
+          <div>
+            <h3 style="margin:0 0 6px 0;"><a href="${url}" target="_blank" rel="noopener">${t || "(sans titre)"}</a></h3>
+            <div><strong>Prix:</strong> ${price}</div>
+            <div><strong>Lieu:</strong> ${loc}</div>
+            <div>${ym}</div>
+            <div>${bm}</div>
+          </div>
+        </article>
+      `;
+    }
+
+    document.getElementById("frm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const url = document.getElementById("url").value.trim();
+      const model = document.getElementById("model").value.trim();
+      const max = document.getElementById("max").value.trim();
+      const pages = document.getElementById("pages").value.trim();
+      const hydrate = document.getElementById("hydrate").checked ? "1" : "0";
+      const sleep = document.getElementById("sleep").value.trim();
+
+      const params = new URLSearchParams({ url, hydrate });
+      if (max) params.set("max", max);
+      if (pages) params.set("pages", pages);
+      if (sleep) params.set("sleep", sleep);
+      if (model) params.set("model_re", model);
+
+      const status = document.getElementById("status");
+      const out = document.getElementById("out");
+      out.innerHTML = "";
+      status.textContent = "Scraping en cours…";
+
+      try {
+        const res = await fetch(`${API_BASE}/api/scrape?${params.toString()}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || "Erreur API");
+
+        status.textContent = `Annonces: ${data.count}`;
+        out.innerHTML = (data.data || []).map(card).join("");
+      } catch (err) {
+        status.textContent = "Erreur: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
